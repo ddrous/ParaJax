@@ -6,7 +6,7 @@ Scaling differential equations via transferable dynamics.
 - **Faster discovery** of dynamical systems.
 - **Better learning** with advanced regularisation of the dynamics.
 - **Transfer learning** with all its advantages (sim2real, etc...).
-- Interpretable representations of high dimensional data via **latent variable models**.
+- **Interpretable representations** of high dimensional data via latent variable models.
 
 
 ## Getting started
