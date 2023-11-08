@@ -10,7 +10,7 @@ def seconds_to_hours(seconds):
     return hours, minutes, seconds
 
 ## Simply returns a suitable key for all jax operations
-def get_new_keys(key=None, num=1):
+def get_new_key(key=None, num=1):
     if key is None:
         print("WARNING: No key provided, using time as seed")
         key = jax.random.PRNGKey(time.time_ns())

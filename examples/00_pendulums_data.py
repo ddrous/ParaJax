@@ -205,7 +205,7 @@ def animate(i):
 # ani = FuncAnimation(fig, animate, frames=len(solution.t), interval=10, repeat=True, blit=True)
 # plt.show()
 
-np.savez('data/inverse_pendulum.npz', t=t_eval, X=solution.y)
+np.savez('data/inverted_pendulum.npz', t=t_eval, X=solution.y)
 
 
 # %%

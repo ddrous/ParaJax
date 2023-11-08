@@ -13,6 +13,9 @@ import jax
 # os.environ['XLA_FLAGS'] = '--xla_force_host_platform_device_count=4'
 print("Available devices:", jax.devices())
 
+from jax import config
+config.update("jax_debug_nans", True)
+
 import jax.numpy as jnp
 import numpy as np
 import equinox as eqx
@@ -44,9 +47,15 @@ def split_into_windows(X_raw, window_size):
         X_windows.append(X_raw[i:i+window_size])
     return jnp.array(X_windows)
 
+SEED = 27
 window_size = 100
 X1 = split_into_windows(X1_raw, window_size)
 X2 = split_into_windows(X2_raw, window_size)
+
+
+def suffle(X,):
+    key = get_new_key(SEED)
+    return X[jnp.random.permutation(X.shape[0], key=key)]
 
 print("Datasets sizes:", X1.shape, X2.shape)
 
@@ -72,7 +81,7 @@ class Encoder(eqx.Module):
     layers: list
 
     def __init__(self, in_size=2, out_size=2, key=None):
-        keys = get_new_keys(key, num=2)
+        keys = get_new_key(key, num=2)
         self.layers = [eqx.nn.Linear(in_size, 100, key=keys[0]), jax.nn.tanh,
                         eqx.nn.Linear(100, out_size, key=keys[1]) ]
 
@@ -85,7 +94,7 @@ class Processor(eqx.Module):
     layers: list
 
     def __init__(self, in_out_size=2, key=None):
-        keys = get_new_keys(key, num=2)
+        keys = get_new_key(key, num=2)
         self.layers = [eqx.nn.Linear(in_out_size+1, 100, key=keys[0]), jax.nn.tanh,
                         eqx.nn.Linear(100, in_out_size, key=keys[1])]
 
@@ -100,7 +109,7 @@ class Decoder(eqx.Module):
     layers: list
 
     def __init__(self, in_size=2, out_size=2, key=None):
-        keys = get_new_keys(key, num=2)
+        keys = get_new_key(key, num=2)
         self.layers = [eqx.nn.Linear(in_size, 100, key=keys[0]), jax.nn.tanh,
                         eqx.nn.Linear(100, out_size, key=keys[1]) ]
 
@@ -109,17 +118,18 @@ class Decoder(eqx.Module):
             x = layer(x)
         return x
 
+keys = get_new_key(SEED, num=5)
 latent_size = 2
 
 d1 = X1.shape[-1] - 1
-E1 = Encoder(in_size=d1, out_size=latent_size, key=0)
-D1 = Decoder(in_size=latent_size, out_size=d1, key=1)
+E1 = Encoder(in_size=d1, out_size=latent_size, key=keys[0])
+D1 = Decoder(in_size=latent_size, out_size=d1, key=keys[1])
 
 d2 = X2.shape[-1] - 1
-E2 = Encoder(in_size=d2, out_size=latent_size, key=2)
-D2 = Decoder(in_size=latent_size, out_size=d2, key=3)
+E2 = Encoder(in_size=d2, out_size=latent_size, key=keys[2])
+D2 = Decoder(in_size=latent_size, out_size=d2, key=keys[3])
 
-P = Processor(in_out_size=latent_size*2, key=4)
+P = Processor(in_out_size=latent_size*2, key=keys[4])
 
 model = (E1, E2, P, D1, D2)
 params, static = eqx.partition(model, eqx.is_array)
@@ -175,8 +185,6 @@ def train_step(params, static, batch, opt_state):
     params = optax.apply_updates(params, updates)
     return params, opt_state, loss
 
-# %%
-vars(train_step)
 
 # %%
 
@@ -187,7 +195,7 @@ batch_size = 500
 nb_batches = X1.shape[0] // batch_size
 print_every = 100
 
-sched = optax.exponential_decay(1e-3, nb_epochs*nb_batches, 0.995)
+sched = optax.exponential_decay(1e-4, nb_epochs*nb_batches, 0.95)
 opt = optax.adam(sched)
 opt_state = opt.init(params)
 
