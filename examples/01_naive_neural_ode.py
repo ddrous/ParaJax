@@ -37,17 +37,20 @@ SEED = 27
 ## Dataset hps
 window_size = 100
 
+## Model hps
+latent_size = 4
+
 ## Integrator hps
 integrator = rk4_integrator
 # integrator = dopri_integrator_diff    ## TODO tell Patrick that this can be unstable
 
 ## Optimiser hps
 init_lr = 5e-4
-decay_rate = 0.95
+decay_rate = 0.9
 
 ## Training hps
 print_every = 100
-nb_epochs = 4000
+nb_epochs = 5000
 batch_size = 500
 
 ## Plotting hps 
@@ -146,7 +149,6 @@ class Decoder(eqx.Module):
         return x
 
 keys = get_new_key(SEED, num=5)
-latent_size = 2
 
 d1 = X1.shape[-1] - 1
 E1 = Encoder(in_size=d1, out_size=latent_size, key=keys[0])
@@ -156,7 +158,7 @@ d2 = X2.shape[-1] - 1
 E2 = Encoder(in_size=d2, out_size=latent_size, key=keys[2])
 D2 = Decoder(in_size=latent_size, out_size=d2, key=keys[3])
 
-P = Processor(in_out_size=latent_size*2, key=keys[4])
+P = Processor(in_out_size=latent_size*1, key=keys[4])
 
 model = (E1, E2, P, D1, D2)
 params, static = eqx.partition(model, eqx.is_array)
@@ -165,6 +167,7 @@ params, static = eqx.partition(model, eqx.is_array)
 
 
 def l2_norm(X, X_hat):
+    ## Norms of 2-dimensional and 4-dimensional vectors
     total_loss =  jnp.mean((X - X_hat)**2, axis=-1)
     return jnp.sum(total_loss) / (X.shape[0] * X.shape[1])
 
@@ -178,8 +181,8 @@ def loss_fn(params, static, batch):
     latent1 = E1_batched(X1[:, 0, :-1])
     latent2 = E2_batched(X2[:, 0, :-1])
 
-    latent = jnp.concatenate([latent1, latent2], axis=-1)       ## TODO only latent1 used
-    # latent = latent1 + latent2
+    # latent = jnp.concatenate([latent1, latent2], axis=-1)       ## TODO only latent1 used
+    latent = latent1 + latent2
     t = X1[0, ..., -1]
 
     P_params, P_static = eqx.partition(P, eqx.is_array)
@@ -192,12 +195,11 @@ def loss_fn(params, static, batch):
 
     D1_, D2_ = jax.vmap(D1), jax.vmap(D2)
     D1_batched, D2_batched = jax.vmap(D1_), jax.vmap(D2_)
-    X1_hat = D1_batched(latent_final[..., :latent_size])
-    X2_hat = D2_batched(latent_final[..., latent_size:])
+    # X1_hat = D1_batched(latent_final[..., :latent_size])
+    # X2_hat = D2_batched(latent_final[..., latent_size:])
 
-    ## Norms of 2-dimensional and 4-dimensional vectors
-    # total_loss = jnp.mean((X1[..., :-1] - X1_hat)**2, axis=-1) + jnp.mean((X2[..., :-1] - X2_hat)**2, axis=-1)
-    # return jnp.sum(total_loss) / (X1.shape[0] * X1.shape[1])
+    X1_hat = D1_batched(latent_final)
+    X2_hat = D2_batched(latent_final)
 
     return l2_norm(X1[..., :-1], X1_hat) + l2_norm(X2[..., :-1], X2_hat)
 
@@ -264,15 +266,19 @@ def test_model(model, X1, X2):
     latent1 = E1(X1[0, :-1])
     latent2 = E2(X2[0, :-1])
 
-    latent = jnp.concatenate([latent1, latent2], axis=-1)
+    # latent = jnp.concatenate([latent1, latent2], axis=-1)
+    latent = latent1 + latent2
     t = X1[:, -1]
 
     P_params, P_static = eqx.partition(P, eqx.is_array)
     latent_final = integrator(P_params, P_static, latent, t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 2, "checkpointed")
 
     D1_, D2_ = jax.vmap(D1), jax.vmap(D2)
-    X1_hat = D1_(latent_final[:, :latent_size])
-    X2_hat = D2_(latent_final[:, latent_size:])
+    # X1_hat = D1_(latent_final[:, :latent_size])
+    # X2_hat = D2_(latent_final[:, latent_size:])
+
+    X1_hat = D1_(latent_final)
+    X2_hat = D2_(latent_final)
 
     return X1_hat, X2_hat
 
@@ -313,7 +319,7 @@ print(f"  - Inverted Pendulum: {RE2:.5f}")
 
 
 #%% 
-eqx.tree_serialise_leaves("data/model_002.eqx", model)
+eqx.tree_serialise_leaves("data/model_003.eqx", model)
 # model = eqx.tree_deserialise_leaves("data/model001.eqx", model)
 
 # %% [markdown]
@@ -330,3 +336,25 @@ eqx.tree_serialise_leaves("data/model_002.eqx", model)
 #
 # $$  \frac{dY}{dt} = \alpha_1 F_{\theta_1} + \alpha_2 F_{\theta_2} + ...+ \alpha_K F_{\theta_K} $$
 
+
+
+
+# %%
+def test_processor(model, X_latent, t):
+    _, _, P, _, _ = model
+
+    P_params, P_static = eqx.partition(P, eqx.is_array)
+    latent_final = integrator(P_params, P_static, X_latent, t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 2, "checkpointed")
+
+    return latent_final
+
+# X_latent = jnp.array([0.0, 0.1, 0.0, 0.1])
+X_latent = jax.random.uniform(get_new_key(SEED), (4,))
+test_t = jnp.linspace(0, 100, 1001)
+
+X_latent_final = test_processor(model, X_latent, test_t)
+labels = [str(i) for i in range(X_latent_final.shape[-1])]
+
+sbplot(test_t, X_latent_final[:, :], x_label='Time', label=labels, title='Latent dynamics');
+
+# %%
