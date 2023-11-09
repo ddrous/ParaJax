@@ -50,7 +50,7 @@ decay_rate = 0.9
 
 ## Training hps
 print_every = 100
-nb_epochs = 1000
+nb_epochs = 2000
 batch_size = 1000
 
 ## Plotting hps 
@@ -118,38 +118,49 @@ class Encoder(eqx.Module):
         return x
 
 class Processor(eqx.Module):
-    layers: list
+    # layers: list
     lamb: jnp.ndarray
 
     def __init__(self, in_out_size=2, key=None):
         keys = get_new_key(key, num=3)
-        self.layers = [eqx.nn.Linear(in_out_size+1, 10, key=keys[0]), jax.nn.tanh,
-                        eqx.nn.Linear(10, 10, key=keys[1]), jax.nn.tanh,
-                        eqx.nn.Linear(10, in_out_size, key=keys[2])]
-        self.lamb = jnp.array([-10.0])
+        # self.layers = [eqx.nn.Linear(in_out_size+1, 10, key=keys[0]), jax.nn.tanh,
+        #                 eqx.nn.Linear(10, 10, key=keys[1]), jax.nn.tanh,
+        #                 eqx.nn.Linear(10, in_out_size, key=keys[2])]
+
+        self.lamb = jnp.array([-12.0])
+        # self.lamb = jax.random.uniform(get_new_key(key), (1,))*20
 
     def __call__(self, x, t):
-        y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
-        for layer in self.layers:
-            y = layer(y)
-        return y + self.lamb[0]*x
+        # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+        # for layer in self.layers:
+        #     y = layer(y)
+        # return y
+        return self.lamb[0]*x
 
 
 class Decoder(eqx.Module):
-    layers: list
+    # layers: list
+
+    params_comp: jnp.ndarray    ## The other system's parameters
 
     def __init__(self, in_size=2, out_size=2, key=None):
         keys = get_new_key(key, num=3)
         # self.layers = [eqx.nn.Linear(in_size, 100, key=keys[0]), jax.nn.tanh,
-        self.layers = [eqx.nn.Linear(in_size, 100, key=keys[0]), jax.nn.tanh,
-                        eqx.nn.Linear(100, 10, key=keys[1]), jax.nn.tanh,
-                        eqx.nn.Linear(10, out_size, key=keys[2]) ]
+        # self.layers = [eqx.nn.Linear(in_size, 100, key=keys[0]), jax.nn.tanh,
+        #                 eqx.nn.Linear(100, 10, key=keys[1]), jax.nn.tanh,
+        #                 eqx.nn.Linear(10, out_size, key=keys[2]) ]
+
+        self.params_comp = jnp.array([1.0, 6.5])
+        # self.params_comp = jax.random.uniform(get_new_key(key), (2,))*20
 
     def __call__(self, x, x0, t):
-        x = jnp.concatenate([x, x0, jnp.broadcast_to(t, (1,))], axis=0)
-        for layer in self.layers:
-            x = layer(x)
-        return x
+        # x = jnp.concatenate([x, x0, jnp.broadcast_to(t, (1,))], axis=0)
+        # for layer in self.layers:
+        #     x = layer(x)
+        # return x
+
+        init_, lamb_ = self.params_comp
+        return (x/init_)*jnp.exp(-lamb_*t)
 
 keys = get_new_key(SEED, num=5)
 
