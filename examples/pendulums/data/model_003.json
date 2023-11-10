@@ -32,16 +32,17 @@ import time
 
 #%%
 
-SEED = 17
+SEED = 27
 
 ## Dataset hps
-window_size = 1000
+window_size = 100
 
 ## Model hps
-latent_size = 1
+latent_size = 4
 
 ## Integrator hps
 integrator = rk4_integrator
+# integrator = dopri_integrator
 # integrator = dopri_integrator_diff    ## TODO tell Patrick that this can be unstable
 
 ## Optimiser hps
@@ -50,28 +51,28 @@ decay_rate = 0.9
 
 ## Training hps
 print_every = 100
-nb_epochs = 2000
-batch_size = 1000
+nb_epochs = 5000
+batch_size = 300
 
 ## Plotting hps 
-plt_hor = 10001
+plt_hor = 1000
 
 
 #%%
 
 
-d5 = jnp.load('data/dahlquist_n5.npz')
-X1_raw = jnp.concatenate([d5['X'].T, d5['t'][:, None]], axis=-1)
+sp = jnp.load('data/simple_pendulum.npz')
+X1_raw = jnp.concatenate([sp['X'].T, sp['t'][:, None]], axis=-1)
 
-d8 = jnp.load('data/dahlquist_n8.npz')
-X2_raw = jnp.concatenate([d8['X'].T, d8['t'][:, None]], axis=-1)
+ip = jnp.load('data/inverted_pendulum.npz')
+X2_raw = jnp.concatenate([ip['X'].T, ip['t'][:, None]], axis=-1)
 
 # X = jnp.concatenate([X1[:, :-1], X2], axis=-1)
 # X
 
 def split_into_windows(X_raw, window_size):
     X_windows = []
-    for i in range(0, X_raw.shape[0]-window_size, 2):
+    for i in range(0, X_raw.shape[0]-window_size, 4):
         X_windows.append(X_raw[i:i+window_size])
     return jnp.array(X_windows)
 
@@ -88,17 +89,19 @@ X1 = suffle(X1)
 X2 = suffle(X2)
 
 print("Datasets sizes:", X1.shape, X2.shape)
-# batch_size = X1.shape[0]
-
 
 # %%
 
 
-d5_to_plot = X1_raw[:plt_hor]
-ax = sbplot(d5_to_plot[:, -1], d5_to_plot[:, 0], "--", x_label='Time', label=r'$-5$', title='Dalhuist')
+sp_to_plot = X1_raw[:plt_hor]
+ax = sbplot(sp_to_plot[:, -1], sp_to_plot[:, 0], "--", x_label='Time', label=r'$\theta$', title='Simple Pendulum')
+ax = sbplot(sp_to_plot[:, -1], sp_to_plot[:, 1], "--", x_label='Time', label=r'$\dot \theta$', ax=ax)
 
-d8_to_plot = X2_raw[:plt_hor]
-ax = sbplot(d8_to_plot[:, -1], d8_to_plot[:, 0], "--", x_label='Time', label=r'$-8$', ax=ax)
+ip_to_plot = X2_raw[:plt_hor]
+ax = sbplot(ip_to_plot[:, -1], ip_to_plot[:, 2], "--", x_label='Time', label=r'$\theta$', title='Inverted Pendulum')
+ax = sbplot(ip_to_plot[:, -1], ip_to_plot[:, 3], "--", x_label='Time', label=r'$\dot \theta$', ax=ax)
+ax = sbplot(ip_to_plot[:, -1], ip_to_plot[:, 0], "--", x_label='Time', label=r'$x$', ax=ax)
+ax = sbplot(ip_to_plot[:, -1], ip_to_plot[:, 1], "--", x_label='Time', label=r'$\dot x$', ax=ax)
 
 
 # %%
@@ -108,59 +111,59 @@ class Encoder(eqx.Module):
     layers: list
 
     def __init__(self, in_size=2, out_size=2, key=None):
-        keys = get_new_key(key, num=2)
-        self.layers = [eqx.nn.Linear(in_size, 10, key=keys[0]), jax.nn.tanh,
-                        eqx.nn.Linear(10, out_size, key=keys[1]) ]
+        keys = get_new_key(key, num=3)
+        self.layers = [eqx.nn.Linear(in_size, 100, key=keys[0]), jax.nn.tanh,
+                        eqx.nn.Linear(100, out_size, key=keys[1]) ]
+
 
     def __call__(self, x):
-        # for layer in self.layers:
-        #     x = layer(x)
+        for layer in self.layers:
+            x = layer(x)
         return x
 
 class Processor(eqx.Module):
-    # layers: list
-    lamb: jnp.ndarray
+    layers1: list
+    layers2: list
+    alpha: jnp.ndarray
 
     def __init__(self, in_out_size=2, key=None):
         keys = get_new_key(key, num=3)
-        # self.layers = [eqx.nn.Linear(in_out_size+1, 10, key=keys[0]), jax.nn.tanh,
-        #                 eqx.nn.Linear(10, 10, key=keys[1]), jax.nn.tanh,
-        #                 eqx.nn.Linear(10, in_out_size, key=keys[2])]
+        self.layers1 = [eqx.nn.Linear(in_out_size+1, 50, key=keys[0]), jax.nn.tanh,
+                        eqx.nn.Linear(50, 50, key=keys[1]), jax.nn.tanh,
+                        eqx.nn.Linear(50, in_out_size, key=keys[2])]
 
-        self.lamb = jnp.array([-12.0])
-        # self.lamb = jax.random.uniform(get_new_key(key), (1,))*20
+        self.layers2 = [eqx.nn.Linear(in_out_size+1, 50, key=keys[2]), jax.nn.tanh,
+                        eqx.nn.Linear(50, 50, key=key), jax.nn.tanh,
+                        eqx.nn.Linear(50, in_out_size, key=keys[0])]
+
+        self.alpha = jax.random.uniform(keys[2], (2,))
 
     def __call__(self, x, t):
-        # y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
-        # for layer in self.layers:
-        #     y = layer(y)
-        # return y
-        return self.lamb[0]*x
+        y1 = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+        for layer in self.layers1:
+            y1 = layer(y1)
+
+        y2 = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+        for layer in self.layers2:
+            y2 = layer(y2)
+
+        return self.alpha[0]*y1 + self.alpha[1]*y2
 
 
 class Decoder(eqx.Module):
-    # layers: list
-
-    params_comp: jnp.ndarray    ## The other system's parameters
+    layers: list
 
     def __init__(self, in_size=2, out_size=2, key=None):
-        keys = get_new_key(key, num=3)
-        # self.layers = [eqx.nn.Linear(in_size, 100, key=keys[0]), jax.nn.tanh,
-        # self.layers = [eqx.nn.Linear(in_size, 100, key=keys[0]), jax.nn.tanh,
-        #                 eqx.nn.Linear(100, 10, key=keys[1]), jax.nn.tanh,
-        #                 eqx.nn.Linear(10, out_size, key=keys[2]) ]
+        keys = get_new_key(key, num=2)
+        self.layers = [eqx.nn.Linear(in_size, 100, key=keys[0]), jax.nn.tanh,
+                        eqx.nn.Linear(100, 100, key=keys[0]), jax.nn.tanh,
+                        eqx.nn.Linear(100, out_size, key=keys[1]) ]
 
-        self.params_comp = jnp.array([1.0, 6.5])
-        # self.params_comp = jax.random.uniform(get_new_key(key), (2,))*20
-
-    def __call__(self, x, x0, t):
-        # x = jnp.concatenate([x, x0, jnp.broadcast_to(t, (1,))], axis=0)
-        # for layer in self.layers:
-        #     x = layer(x)
-        # return x
-
-        init_, lamb_ = self.params_comp
-        return (x/init_)*jnp.exp(-lamb_*t)
+    def __call__(self, z, x0, t):
+        z = jnp.concatenate([z, x0, jnp.broadcast_to(t, (1,))], axis=0)
+        for layer in self.layers:
+            z = layer(z)
+        return z
 
 keys = get_new_key(SEED, num=5)
 
@@ -197,10 +200,11 @@ def loss_fn(params, static, batch):
 
     # latent = jnp.concatenate([latent1, latent2], axis=-1)       ## TODO only latent1 used
     latent = latent1 * latent2
-    t = X1[0, ..., -1]
+    t = X1[:, :, -1]
+    # print("This is t:", t.shape, t)
 
     P_params, P_static = eqx.partition(P, eqx.is_array)
-    integrator_batched = jax.vmap(integrator, in_axes=(None, None, 0, None, None, None, None, None, None, None))
+    integrator_batched = jax.vmap(integrator, in_axes=(None, None, 0, 0, None, None, None, None, None, None))
 
     ## Check these params !!
     latent_final = integrator_batched(P_params, P_static, latent, t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 50, "checkpointed")
@@ -208,9 +212,7 @@ def loss_fn(params, static, batch):
     # latent_dot = P(latent, t)     ## TODO apparently, it is tradition to let the dot go to ZERO
 
     D1_, D2_ = jax.vmap(D1, in_axes=(0, None, 0)), jax.vmap(D2, in_axes=(0, None, 0))
-    D1_batched, D2_batched = jax.vmap(D1_, in_axes=(0, 0, None)), jax.vmap(D2_, in_axes=(0, 0, None))
-    # X1_hat = D1_batched(latent_final[..., :latent_size])
-    # X2_hat = D2_batched(latent_final[..., latent_size:])
+    D1_batched, D2_batched = jax.vmap(D1_, in_axes=(0, 0, 0)), jax.vmap(D2_, in_axes=(0, 0, 0))
 
     X1_hat = D1_batched(latent_final, X1[:, 0, :-1], t)
     X2_hat = D2_batched(latent_final, X2[:, 0, :-1], t)
@@ -222,9 +224,6 @@ def train_step(params, static, batch, opt_state):
     print('\nCompiling function "train_step" ...\n')
 
     loss, grads = jax.value_and_grad(loss_fn)(params, static, batch)
-
-    # losses, grads = jax.vmap(jax.value_and_grad(loss_fn), in_axes=(None, None, 0))(params, static, batch)
-    # loss = jnp.mean(losses)
 
     updates, opt_state = opt.update(grads, opt_state)
     params = optax.apply_updates(params, updates)
@@ -281,7 +280,7 @@ def test_model(model, X1, X2):
     latent2 = E2(X2[0, :-1])
 
     # latent = jnp.concatenate([latent1, latent2], axis=-1)
-    latent = latent1 + latent2
+    latent = latent1 * latent2
     t = X1[:, -1]
 
     P_params, P_static = eqx.partition(P, eqx.is_array)
@@ -305,21 +304,33 @@ plt_hor = plt_hor*1
 
 times = X1_raw[:plt_hor, -1]
 
-d5_to_plot_ = X1_hat[:plt_hor]
-d5_to_plot = X1_raw[:plt_hor]
-ax = sbplot(times, d5_to_plot_[:, 0], "g-", x_label='Time', label=r'$\hat{-5}$', title='Dahlquist')
-ax = sbplot(times, d5_to_plot[:, 0], "g--", lw=1, x_label='Time', label=r'$-5$',ax=ax)
- 
-d8_to_plot_ = X2_hat[:plt_hor]
-d8_to_plot = X2_raw[:plt_hor]
-ax = sbplot(times, d8_to_plot_[:, 0], "r-", x_label='Time', label=r'$\hat{-8}$', ax=ax)
-ax = sbplot(times, d8_to_plot[:, 0], "r--", lw=1, x_label='Time', label=r'$-8$', ax=ax)
+sp_to_plot_ = X1_hat[:plt_hor]
+sp_to_plot = X1_raw[:plt_hor]
+ax = sbplot(times, sp_to_plot_[:, 0], x_label='Time', label=r'$\hat \theta$', title='Simple Pendulum')
+ax = sbplot(times, sp_to_plot[:, 0], "g--", lw=1, x_label='Time', label=r'$\theta$', title='Simple Pendulum',ax=ax)
+
+ax = sbplot(times, sp_to_plot_[:, 1], x_label='Time', label=r'$\hat \dot \theta$', ax=ax)
+ax = sbplot(times, sp_to_plot[:, 1], "y--", lw=1, x_label='Time', label=r'$\dot \theta$', ax=ax)
+
+ip_to_plot_ = X2_hat[:plt_hor]
+ip_to_plot = X2_raw[:plt_hor]
+ax = sbplot(times, ip_to_plot_[:, 2], x_label='Time', label=r'$\hat \theta$', title='Inverted Pendulum')
+ax = sbplot(times, ip_to_plot[:, 2], "g--", lw=1, x_label='Time', label=r'$\theta$', title='Inverted Pendulum', ax=ax)
+
+ax = sbplot(times, ip_to_plot_[:, 3], x_label='Time', label=r'$\hat \dot \theta$', ax=ax)
+ax = sbplot(times, ip_to_plot[:, 3], "y--", lw=1, x_label='Time', label=r'$\dot \theta$', ax=ax)
+
+ax = sbplot(times, ip_to_plot_[:, 0], x_label='Time', label=r'$\hat x$', ax=ax)
+ax = sbplot(times, ip_to_plot[:, 0], "m--", lw=1, x_label='Time', label=r'$x$', ax=ax)
+
+ax = sbplot(times, ip_to_plot_[:, 1], x_label='Time', label=r'$\hat \dot x$', ax=ax)
+ax = sbplot(times, ip_to_plot[:, 1], "r--", lw=1, x_label='Time', label=r'$\dot x$', ax=ax)
 
 RE1 = l2_norm(X1_raw[..., :-1], X1_hat)
 RE2 = l2_norm(X2_raw[..., :-1], X2_hat)
 print("==== Reconstruction errors ====")
-print(f"  - D5 Dahlquist: {RE1:.5f}")
-print(f"  - D8 Dahlquist: {RE2:.5f}")
+print(f"  - Simple Pendulum: {RE1:.5f}")
+print(f"  - Inverted Pendulum: {RE2:.5f}")
 
 
 
@@ -354,17 +365,12 @@ def test_processor(model, X_latent, t):
     return latent_final
 
 # X_latent = jnp.array([0.0, 0.1, 0.0, 0.1])
-# X_latent = jax.random.uniform(get_new_key(SEED), (1,))
-X_latent = 1*jnp.ones((1,))
-test_t = jnp.linspace(0, 1, 10001)
+X_latent = jax.random.uniform(get_new_key(SEED), (4,))
+test_t = jnp.linspace(0, 100, 1001)
 
 X_latent_final = test_processor(model, X_latent, test_t)
 labels = [str(i) for i in range(X_latent_final.shape[-1])]
 
 sbplot(test_t, X_latent_final[:, :], x_label='Time', label=labels, title='Latent dynamics');
-
-# %%
-E1, E2, P, D1, D2 = model
-P.lamb
 
 # %%
