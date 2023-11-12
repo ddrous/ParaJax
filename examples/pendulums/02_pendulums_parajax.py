@@ -23,6 +23,8 @@ import equinox as eqx
 # import pickle
 # import torch
 
+import matplotlib.pyplot as plt
+
 from parajax.utils import *
 from parajax.integrators import *
 
@@ -50,9 +52,9 @@ init_lr = 5e-4
 decay_rate = 0.9
 
 ## Training hps
-print_every = 100
-nb_epochs = 5000
-batch_size = 300
+print_every = 1000
+nb_epochs = 500
+batch_size = 500
 
 ## Plotting hps 
 plt_hor = 1000
@@ -97,12 +99,15 @@ sp_to_plot = X1_raw[:plt_hor]
 ax = sbplot(sp_to_plot[:, -1], sp_to_plot[:, 0], "--", x_label='Time', label=r'$\theta$', title='Simple Pendulum')
 ax = sbplot(sp_to_plot[:, -1], sp_to_plot[:, 1], "--", x_label='Time', label=r'$\dot \theta$', ax=ax)
 
+# plt.savefig("data/simple_pendulum_gt.png", dpi=300, bbox_inches='tight')
+
 ip_to_plot = X2_raw[:plt_hor]
 ax = sbplot(ip_to_plot[:, -1], ip_to_plot[:, 2], "--", x_label='Time', label=r'$\theta$', title='Inverted Pendulum')
 ax = sbplot(ip_to_plot[:, -1], ip_to_plot[:, 3], "--", x_label='Time', label=r'$\dot \theta$', ax=ax)
 ax = sbplot(ip_to_plot[:, -1], ip_to_plot[:, 0], "--", x_label='Time', label=r'$x$', ax=ax)
 ax = sbplot(ip_to_plot[:, -1], ip_to_plot[:, 1], "--", x_label='Time', label=r'$\dot x$', ax=ax)
 
+# plt.savefig("data/inverted_pendulum_gt.png", dpi=300, bbox_inches='tight')
 
 # %%
 
@@ -115,16 +120,42 @@ class Encoder(eqx.Module):
         self.layers = [eqx.nn.Linear(in_size, 100, key=keys[0]), jax.nn.tanh,
                         eqx.nn.Linear(100, out_size, key=keys[1]) ]
 
-
     def __call__(self, x):
         for layer in self.layers:
             x = layer(x)
         return x
 
+# class Processor(eqx.Module):
+#     layers1: list
+#     layers2: list
+#     alpha: jnp.ndarray
+
+#     def __init__(self, in_out_size=2, key=None):
+#         keys = get_new_key(key, num=3)
+#         self.layers1 = [eqx.nn.Linear(in_out_size+1, 50, key=keys[0]), jax.nn.tanh,
+#                         eqx.nn.Linear(50, 50, key=keys[1]), jax.nn.tanh,
+#                         eqx.nn.Linear(50, in_out_size, key=keys[2])]
+
+#         self.layers2 = [eqx.nn.Linear(in_out_size+1, 50, key=keys[2]), jax.nn.tanh,
+#                         eqx.nn.Linear(50, 50, key=key), jax.nn.tanh,
+#                         eqx.nn.Linear(50, in_out_size, key=keys[0])]
+
+#         self.alpha = jax.random.uniform(keys[2], (2,))
+
+#     def __call__(self, x, t):
+#         y1 = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+#         for layer in self.layers1:
+#             y1 = layer(y1)
+
+#         y2 = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+#         for layer in self.layers2:
+#             y2 = layer(y2)
+
+#         return self.alpha[0]*y1 + self.alpha[1]*y2
+
 class Processor(eqx.Module):
-    layers1: list
-    layers2: list
-    alpha: jnp.ndarray
+    layers: list
+    matrix: jnp.ndarray
 
     def __init__(self, in_out_size=2, key=None):
         keys = get_new_key(key, num=3)
@@ -148,6 +179,7 @@ class Processor(eqx.Module):
             y2 = layer(y2)
 
         return self.alpha[0]*y1 + self.alpha[1]*y2
+
 
 
 class Decoder(eqx.Module):
@@ -235,7 +267,16 @@ def train_step(params, static, batch, opt_state):
 
 nb_examples = X1.shape[0]
 
-sched = optax.exponential_decay(init_lr, nb_epochs*int(np.ceil(nb_examples//batch_size)), decay_rate)
+# sched = optax.exponential_decay(init_lr, nb_epochs*int(np.ceil(nb_examples//batch_size)), decay_rate)
+## Linear scheduler divide by 10 every 25% epochs
+# sched = optax.linear_schedule(init_lr, 0, nb_epochs*int(np.ceil(nb_examples//batch_size)), 0.25)
+total_steps = nb_epochs*int(np.ceil(nb_examples//batch_size))
+sched = optax.piecewise_constant_schedule(init_value=init_lr,
+                                            boundaries_and_scales={int(total_steps*0.25):0.1, 
+                                                                    int(total_steps*0.5):0.1,
+                                                                    int(total_steps*0.75):0.1})
+
+
 opt = optax.adam(sched)
 opt_state = opt.init(params)
 
@@ -268,7 +309,8 @@ print("\nTotal training time: %d hours %d mins %d secs" %time_in_hmsecs)
 model = eqx.combine(params, static)
 
 # %%
-sbplot(losses, x_label='Epoch', y_label='L2', y_scale="log", title='Loss');
+ax = sbplot(losses, x_label='Epoch', y_label='L2', y_scale="log", title='Loss');
+plt.savefig("data/loss.png", dpi=300, bbox_inches='tight')
 
 
 # %%
@@ -312,6 +354,8 @@ ax = sbplot(times, sp_to_plot[:, 0], "g--", lw=1, x_label='Time', label=r'$\thet
 ax = sbplot(times, sp_to_plot_[:, 1], x_label='Time', label=r'$\hat \dot \theta$', ax=ax)
 ax = sbplot(times, sp_to_plot[:, 1], "y--", lw=1, x_label='Time', label=r'$\dot \theta$', ax=ax)
 
+plt.savefig("data/simple_pendulum.png", dpi=300, bbox_inches='tight')
+
 ip_to_plot_ = X2_hat[:plt_hor]
 ip_to_plot = X2_raw[:plt_hor]
 ax = sbplot(times, ip_to_plot_[:, 2], x_label='Time', label=r'$\hat \theta$', title='Inverted Pendulum')
@@ -326,6 +370,8 @@ ax = sbplot(times, ip_to_plot[:, 0], "m--", lw=1, x_label='Time', label=r'$x$', 
 ax = sbplot(times, ip_to_plot_[:, 1], x_label='Time', label=r'$\hat \dot x$', ax=ax)
 ax = sbplot(times, ip_to_plot[:, 1], "r--", lw=1, x_label='Time', label=r'$\dot x$', ax=ax)
 
+plt.savefig("data/inverted_pendulum.png", dpi=300, bbox_inches='tight')
+
 RE1 = l2_norm(X1_raw[..., :-1], X1_hat)
 RE2 = l2_norm(X2_raw[..., :-1], X2_hat)
 print("==== Reconstruction errors ====")
@@ -335,7 +381,7 @@ print(f"  - Inverted Pendulum: {RE2:.5f}")
 
 
 #%% 
-eqx.tree_serialise_leaves("data/model_004.eqx", model)
+eqx.tree_serialise_leaves("data/model_005.eqx", model)
 # model = eqx.tree_deserialise_leaves("data/model001.eqx", model)
 
 # %% [markdown]
@@ -371,6 +417,7 @@ test_t = jnp.linspace(0, 100, 1001)
 X_latent_final = test_processor(model, X_latent, test_t)
 labels = [str(i) for i in range(X_latent_final.shape[-1])]
 
-sbplot(test_t, X_latent_final[:, :], x_label='Time', label=labels, title='Latent dynamics');
+ax = sbplot(test_t, X_latent_final[:, :], x_label='Time', label=labels, title='Latent dynamics');
+plt.savefig("data/latent_pendulum.png", dpi=300, bbox_inches='tight')
 
 # %%
