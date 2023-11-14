@@ -14,7 +14,7 @@ import jax
 print("Available devices:", jax.devices())
 
 from jax import config
-config.update("jax_debug_nans", True)
+# config.update("jax_debug_nans", True)
 
 import jax.numpy as jnp
 import numpy as np
@@ -52,8 +52,8 @@ init_lr = 5e-4
 decay_rate = 0.9
 
 ## Training hps
-print_every = 1000
-nb_epochs = 500
+print_every = 100
+nb_epochs = 5000
 batch_size = 500
 
 ## Plotting hps 
@@ -155,30 +155,29 @@ class Encoder(eqx.Module):
 
 class Processor(eqx.Module):
     layers: list
+    # alpha: jnp.ndarray
+    # beta: jnp.ndarray
     matrix: jnp.ndarray
 
     def __init__(self, in_out_size=2, key=None):
         keys = get_new_key(key, num=3)
-        self.layers1 = [eqx.nn.Linear(in_out_size+1, 50, key=keys[0]), jax.nn.tanh,
+        self.layers = [eqx.nn.Linear(in_out_size+1, 50, key=keys[0]), jax.nn.tanh,
                         eqx.nn.Linear(50, 50, key=keys[1]), jax.nn.tanh,
                         eqx.nn.Linear(50, in_out_size, key=keys[2])]
 
-        self.layers2 = [eqx.nn.Linear(in_out_size+1, 50, key=keys[2]), jax.nn.tanh,
-                        eqx.nn.Linear(50, 50, key=key), jax.nn.tanh,
-                        eqx.nn.Linear(50, in_out_size, key=keys[0])]
-
-        self.alpha = jax.random.uniform(keys[2], (2,))
+        # self.alpha = jax.random.uniform(keys[2], (1,))
+        # self.beta = jax.random.uniform(keys[3], (1,))
+        self.matrix = jax.random.normal(keys[2], (4, 4))
 
     def __call__(self, x, t):
-        y1 = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
-        for layer in self.layers1:
-            y1 = layer(y1)
+        # matrix = jnp.array([[0, 1, 0, 0], [self.alpha[0], 0, 0, 0],
+        #                     [0, 0, 0, 1], [0, 0, self.beta[0], 0]])
 
-        y2 = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
-        for layer in self.layers2:
-            y2 = layer(y2)
+        y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+        for layer in self.layers:
+            y = layer(y)
 
-        return self.alpha[0]*y1 + self.alpha[1]*y2
+        return self.matrix@x + y
 
 
 
@@ -267,15 +266,14 @@ def train_step(params, static, batch, opt_state):
 
 nb_examples = X1.shape[0]
 
-# sched = optax.exponential_decay(init_lr, nb_epochs*int(np.ceil(nb_examples//batch_size)), decay_rate)
-## Linear scheduler divide by 10 every 25% epochs
-# sched = optax.linear_schedule(init_lr, 0, nb_epochs*int(np.ceil(nb_examples//batch_size)), 0.25)
 total_steps = nb_epochs*int(np.ceil(nb_examples//batch_size))
-sched = optax.piecewise_constant_schedule(init_value=init_lr,
-                                            boundaries_and_scales={int(total_steps*0.25):0.1, 
-                                                                    int(total_steps*0.5):0.1,
-                                                                    int(total_steps*0.75):0.1})
 
+sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
+# sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
+# sched = optax.piecewise_constant_schedule(init_value=init_lr,
+#                                             boundaries_and_scales={int(total_steps*0.25):0.1, 
+#                                                                     int(total_steps*0.5):0.1,
+#                                                                     int(total_steps*0.75):0.1})
 
 opt = optax.adam(sched)
 opt_state = opt.init(params)
@@ -412,7 +410,7 @@ def test_processor(model, X_latent, t):
 
 # X_latent = jnp.array([0.0, 0.1, 0.0, 0.1])
 X_latent = jax.random.uniform(get_new_key(SEED), (4,))
-test_t = jnp.linspace(0, 100, 1001)
+test_t = jnp.linspace(0, 10, 1001)
 
 X_latent_final = test_processor(model, X_latent, test_t)
 labels = [str(i) for i in range(X_latent_final.shape[-1])]

@@ -42,3 +42,7 @@ examples/data/
 
 ## Cprofile
 examples/runs/cprofile/*
+
+## Data
+examples/pendulums/data/*
+examples/dahlquist/data/*

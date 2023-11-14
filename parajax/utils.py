@@ -2,6 +2,13 @@
 import time
 import jax
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set(context='notebook', style='ticks',
+        font='sans-serif', font_scale=1, color_codes=True, rc={"lines.linewidth": 2})
+plt.style.use("dark_background")
+
+
 def seconds_to_hours(seconds):
     seconds = int(seconds)
     hours = seconds // 3600
@@ -24,13 +31,6 @@ def get_new_key(key=None, num=1):
 
 ## Wrapper function for matplotlib and seaborn
 def sbplot(*args, ax=None, figsize=(6,3.5), x_label=None, y_label=None, title=None, x_scale='linear', y_scale='linear', xlim=None, ylim=None, **kwargs):
-
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    sns.set(context='notebook', style='ticks',
-            font='sans-serif', font_scale=1, color_codes=True, rc={"lines.linewidth": 2})
-    plt.style.use("dark_background")
-
     if ax==None:
         _, ax = plt.subplots(1, 1, figsize=figsize)
     # sns.despine(ax=ax)
