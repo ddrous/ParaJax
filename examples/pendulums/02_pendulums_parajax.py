@@ -94,7 +94,6 @@ print("Datasets sizes:", X1.shape, X2.shape)
 
 # %%
 
-
 sp_to_plot = X1_raw[:plt_hor]
 ax = sbplot(sp_to_plot[:, -1], sp_to_plot[:, 0], "--", x_label='Time', label=r'$\theta$', title='Simple Pendulum')
 ax = sbplot(sp_to_plot[:, -1], sp_to_plot[:, 1], "--", x_label='Time', label=r'$\dot \theta$', ax=ax)
@@ -125,59 +124,84 @@ class Encoder(eqx.Module):
             x = layer(x)
         return x
 
-# class Processor(eqx.Module):
-#     layers1: list
-#     layers2: list
-#     alpha: jnp.ndarray
 
-#     def __init__(self, in_out_size=2, key=None):
-#         keys = get_new_key(key, num=3)
-#         self.layers1 = [eqx.nn.Linear(in_out_size+1, 50, key=keys[0]), jax.nn.tanh,
-#                         eqx.nn.Linear(50, 50, key=keys[1]), jax.nn.tanh,
-#                         eqx.nn.Linear(50, in_out_size, key=keys[2])]
-
-#         self.layers2 = [eqx.nn.Linear(in_out_size+1, 50, key=keys[2]), jax.nn.tanh,
-#                         eqx.nn.Linear(50, 50, key=key), jax.nn.tanh,
-#                         eqx.nn.Linear(50, in_out_size, key=keys[0])]
-
-#         self.alpha = jax.random.uniform(keys[2], (2,))
-
-#     def __call__(self, x, t):
-#         y1 = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
-#         for layer in self.layers1:
-#             y1 = layer(y1)
-
-#         y2 = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
-#         for layer in self.layers2:
-#             y2 = layer(y2)
-
-#         return self.alpha[0]*y1 + self.alpha[1]*y2
-
-class Processor(eqx.Module):
-    layers: list
-    # alpha: jnp.ndarray
-    # beta: jnp.ndarray
-    matrix: jnp.ndarray
+class Operator(eqx.Module):
+    # layers: list
 
     def __init__(self, in_out_size=2, key=None):
         keys = get_new_key(key, num=3)
-        self.layers = [eqx.nn.Linear(in_out_size+1, 50, key=keys[0]), jax.nn.tanh,
+        # self.layers = [eqx.nn.Linear(in_out_size*2, 50, key=keys[0]), jax.nn.tanh,
+        #                 eqx.nn.Linear(50, 50, key=keys[1]), jax.nn.tanh,
+        #                 eqx.nn.Linear(50, in_out_size, key=keys[2])]
+
+    def __call__(self, x1, x2):
+        y = jnp.concatenate([x1, x2], axis=0)
+        # for layer in self.layers:
+        #     y = layer(y)
+        return y
+        # return x1
+
+
+
+class Processor(eqx.Module):
+    layers1: list
+    layers2: list
+    alpha: jnp.ndarray
+
+    def __init__(self, in_out_size=2, key=None):
+        keys = get_new_key(key, num=3)
+        self.layers1 = [eqx.nn.Linear(in_out_size+1, 50, key=keys[0]), jax.nn.tanh,
                         eqx.nn.Linear(50, 50, key=keys[1]), jax.nn.tanh,
                         eqx.nn.Linear(50, in_out_size, key=keys[2])]
 
-        # self.alpha = jax.random.uniform(keys[2], (1,))
-        # self.beta = jax.random.uniform(keys[3], (1,))
-        self.matrix = jax.random.normal(keys[2], (4, 4))
+        self.layers2 = [eqx.nn.Linear(in_out_size+1, 50, key=keys[2]), jax.nn.tanh,
+                        eqx.nn.Linear(50, 50, key=key), jax.nn.tanh,
+                        eqx.nn.Linear(50, in_out_size, key=keys[0])]
+
+        self.alpha = jax.random.uniform(keys[2], (2,))
 
     def __call__(self, x, t):
-        # matrix = jnp.array([[0, 1, 0, 0], [self.alpha[0], 0, 0, 0],
-        #                     [0, 0, 0, 1], [0, 0, self.beta[0], 0]])
+        y1 = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+        for layer in self.layers1:
+            y1 = layer(y1)
 
-        y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
-        for layer in self.layers:
-            y = layer(y)
+        y2 = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+        for layer in self.layers2:
+            y2 = layer(y2)
 
-        return self.matrix@x + y
+        # return self.alpha[0]*y1 + self.alpha[1]*y2
+
+        alpha_ = jax.nn.softmax(self.alpha)
+        return alpha_[0]*y1 + alpha_[1]*y2
+
+
+
+# class Processor(eqx.Module):
+#     layers: list
+#     # alpha: jnp.ndarray
+#     # beta: jnp.ndarray
+#     matrix: jnp.ndarray
+
+#     def __init__(self, in_out_size=2, key=None):
+#         keys = get_new_key(key, num=3)
+#         self.layers = [eqx.nn.Linear(in_out_size+1, 50, key=keys[0]), jax.nn.tanh,
+#                         eqx.nn.Linear(50, 50, key=keys[1]), jax.nn.tanh,
+#                         eqx.nn.Linear(50, in_out_size, key=keys[2])]
+
+#         # self.alpha = jax.random.uniform(keys[2], (1,))
+#         # self.beta = jax.random.uniform(keys[3], (1,))
+#         self.matrix = jax.random.normal(keys[2], (in_out_size, in_out_size))
+
+#     def __call__(self, x, t):
+#         # matrix = jnp.array([[0, 1, 0, 0], [self.alpha[0], 0, 0, 0],
+#         #                     [0, 0, 0, 1], [0, 0, self.beta[0], 0]])
+
+#         y = jnp.concatenate([jnp.broadcast_to(t, (1,)), x], axis=0)
+#         for layer in self.layers:
+#             y = layer(y)
+
+#         return self.matrix@x + y
+#         # return self.matrix@x
 
 
 
@@ -196,19 +220,20 @@ class Decoder(eqx.Module):
             z = layer(z)
         return z
 
-keys = get_new_key(SEED, num=5)
+keys = get_new_key(SEED, num=6)
 
 d1 = X1.shape[-1] - 1
 E1 = Encoder(in_size=d1, out_size=latent_size, key=keys[0])
-D1 = Decoder(in_size=latent_size+d1+1, out_size=d1, key=keys[1])
+D1 = Decoder(in_size=2*latent_size+d1+1, out_size=d1, key=keys[1])
 
 d2 = X2.shape[-1] - 1
 E2 = Encoder(in_size=d2, out_size=latent_size, key=keys[2])
-D2 = Decoder(in_size=latent_size+d2+1, out_size=d2, key=keys[3])
+D2 = Decoder(in_size=2*latent_size+d2+1, out_size=d2, key=keys[3])
 
-P = Processor(in_out_size=latent_size*1, key=keys[4])
+P = Processor(in_out_size=latent_size*2, key=keys[4])
+O = Operator(in_out_size=latent_size, key=keys[5])
 
-model = (E1, E2, P, D1, D2)
+model = (E1, E2, P, D1, D2, O)
 params, static = eqx.partition(model, eqx.is_array)
 
 # %%
@@ -223,14 +248,20 @@ def loss_fn(params, static, batch):
     X1, X2 = batch
     model = eqx.combine(params, static)
 
-    E1, E2, P, D1, D2 = model       ## TODO vmap the model directly
+    E1, E2, P, D1, D2, O = model       ## TODO vmap the model directly
 
     E1_batched, E2_batched = jax.vmap(E1), jax.vmap(E2)
     latent1 = E1_batched(X1[:, 0, :-1])
     latent2 = E2_batched(X2[:, 0, :-1])
 
     # latent = jnp.concatenate([latent1, latent2], axis=-1)       ## TODO only latent1 used
-    latent = latent1 * latent2
+    O_batched = jax.vmap(O, in_axes=(0, 0))
+    # latentM = latent1 * latent2
+    # latentP = latent1 + latent2
+    # latent = O_batched(latentM, latentP)
+
+    latent = O_batched(latent1, latent2)
+
     t = X1[:, :, -1]
     # print("This is t:", t.shape, t)
 
@@ -268,12 +299,12 @@ nb_examples = X1.shape[0]
 
 total_steps = nb_epochs*int(np.ceil(nb_examples//batch_size))
 
-sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
+# sched = optax.exponential_decay(init_lr, total_steps, decay_rate)
 # sched = optax.linear_schedule(init_lr, 0, total_steps, 0.25)
-# sched = optax.piecewise_constant_schedule(init_value=init_lr,
-#                                             boundaries_and_scales={int(total_steps*0.25):0.1, 
-#                                                                     int(total_steps*0.5):0.1,
-#                                                                     int(total_steps*0.75):0.1})
+sched = optax.piecewise_constant_schedule(init_value=init_lr,
+                                            boundaries_and_scales={int(total_steps*0.25):0.5, 
+                                                                    int(total_steps*0.5):0.2,
+                                                                    int(total_steps*0.75):0.5})
 
 opt = optax.adam(sched)
 opt_state = opt.init(params)
@@ -314,13 +345,18 @@ plt.savefig("data/loss.png", dpi=300, bbox_inches='tight')
 # %%
 
 def test_model(model, X1, X2):
-    E1, E2, P, D1, D2 = model
+    E1, E2, P, D1, D2, O = model
 
     latent1 = E1(X1[0, :-1])
     latent2 = E2(X2[0, :-1])
 
     # latent = jnp.concatenate([latent1, latent2], axis=-1)
-    latent = latent1 * latent2
+    # latentM = latent1 * latent2
+    # latentP = latent1 + latent2
+    # latent = O(latentM, latentP)
+
+    latent = O(latent1, latent2)
+
     t = X1[:, -1]
 
     P_params, P_static = eqx.partition(P, eqx.is_array)
@@ -341,6 +377,7 @@ def test_model(model, X1, X2):
 X1_hat, X2_hat = test_model(model, X1_raw, X2_raw)
 
 plt_hor = plt_hor*1
+plt_hor = 2000
 
 times = X1_raw[:plt_hor, -1]
 
@@ -377,7 +414,6 @@ print(f"  - Simple Pendulum: {RE1:.5f}")
 print(f"  - Inverted Pendulum: {RE2:.5f}")
 
 
-
 #%% 
 eqx.tree_serialise_leaves("data/model_005.eqx", model)
 # model = eqx.tree_deserialise_leaves("data/model001.eqx", model)
@@ -401,7 +437,7 @@ eqx.tree_serialise_leaves("data/model_005.eqx", model)
 
 # %%
 def test_processor(model, X_latent, t):
-    _, _, P, _, _ = model
+    _, _, P, _, _, _ = model
 
     P_params, P_static = eqx.partition(P, eqx.is_array)
     latent_final = integrator(P_params, P_static, X_latent, t, 1.4e-8, 1.4e-8, jnp.inf, jnp.inf, 2, "checkpointed")
@@ -409,13 +445,14 @@ def test_processor(model, X_latent, t):
     return latent_final
 
 # X_latent = jnp.array([0.0, 0.1, 0.0, 0.1])
-X_latent = jax.random.uniform(get_new_key(SEED), (4,))
-test_t = jnp.linspace(0, 10, 1001)
+X_latent = jax.random.uniform(get_new_key(SEED), (latent_size*2,))
+test_t = jnp.linspace(0, 1, 1001)
 
 X_latent_final = test_processor(model, X_latent, test_t)
 labels = [str(i) for i in range(X_latent_final.shape[-1])]
 
 ax = sbplot(test_t, X_latent_final[:, :], x_label='Time', label=labels, title='Latent dynamics');
 plt.savefig("data/latent_pendulum.png", dpi=300, bbox_inches='tight')
+
 
 # %%
