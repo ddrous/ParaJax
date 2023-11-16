@@ -135,11 +135,11 @@ class Operator(eqx.Module):
         #                 eqx.nn.Linear(50, in_out_size, key=keys[2])]
 
     def __call__(self, x1, x2):
-        y = jnp.concatenate([x1, x2], axis=0)
+        # y = jnp.concatenate([x1, x2], axis=0)
         # for layer in self.layers:
         #     y = layer(y)
-        return y
-        # return x1
+        # return y
+        return x1*x2
 
 
 
@@ -224,13 +224,13 @@ keys = get_new_key(SEED, num=6)
 
 d1 = X1.shape[-1] - 1
 E1 = Encoder(in_size=d1, out_size=latent_size, key=keys[0])
-D1 = Decoder(in_size=2*latent_size+d1+1, out_size=d1, key=keys[1])
+D1 = Decoder(in_size=latent_size+d1+1, out_size=d1, key=keys[1])
 
 d2 = X2.shape[-1] - 1
 E2 = Encoder(in_size=d2, out_size=latent_size, key=keys[2])
-D2 = Decoder(in_size=2*latent_size+d2+1, out_size=d2, key=keys[3])
+D2 = Decoder(in_size=latent_size+d2+1, out_size=d2, key=keys[3])
 
-P = Processor(in_out_size=latent_size*2, key=keys[4])
+P = Processor(in_out_size=latent_size, key=keys[4])
 O = Operator(in_out_size=latent_size, key=keys[5])
 
 model = (E1, E2, P, D1, D2, O)
@@ -445,7 +445,7 @@ def test_processor(model, X_latent, t):
     return latent_final
 
 # X_latent = jnp.array([0.0, 0.1, 0.0, 0.1])
-X_latent = jax.random.uniform(get_new_key(SEED), (latent_size*2,))
+X_latent = jax.random.uniform(get_new_key(SEED), (latent_size,))
 test_t = jnp.linspace(0, 1, 1001)
 
 X_latent_final = test_processor(model, X_latent, test_t)
