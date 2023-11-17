@@ -3,7 +3,7 @@
 #%%
 
 import numpy as np
-from parajax.utils import *
+from graphpint.utils import *
 import matplotlib.pyplot as plt
 
 

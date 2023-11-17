@@ -23,8 +23,8 @@ import equinox as eqx
 # import pickle
 # import torch
 
-from parajax.utils import *
-from parajax.integrators import *
+from graphpint.utils import *
+from graphpint.integrators import *
 
 import optax
 from functools import partial

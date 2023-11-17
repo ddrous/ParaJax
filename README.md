@@ -1,6 +1,7 @@
-# ParaJax
+# graphpint
 
-Scaling differential equations via transferable dynamics.
+Scaling differential equations via transferable dynamics. We focus on generalising dysnmical systems to new environments. We treat a each of those environments as a node, and the edges carry the difference in network weight norms between them.
+
 
 ## Features
 - **Faster discovery** of dynamical systems.
@@ -10,7 +11,7 @@ Scaling differential equations via transferable dynamics.
 
 
 ## Getting started
-`pip install parajax`
+`pip install graphpint`
 
 
 ## ToDos
@@ -28,3 +29,4 @@ Scaling differential equations via transferable dynamics.
 ## Dependencies
 - JAX
 - Equinox
+- Jraph

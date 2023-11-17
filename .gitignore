@@ -11,9 +11,9 @@ pintode.egg-info/*
 *vtk
 quadqs_statistics.json
 
-parajax.egg-info
-parajax.egg-info/*
-parajax/__pycache__/*
+graphpint.egg-info
+graphpint.egg-info/*
+graphpint/__pycache__/*
 
 # For tensorboard logs
 *v2
@@ -29,7 +29,7 @@ parajax/__pycache__/*
 !scripts/isambard.pbs
 
 # Artifacts of testing
-parajax/tests/data/*
+graphpint/tests/data/*
 
 ## Pytorch data savings
 *-ubyte

@@ -1,5 +1,5 @@
 [project]
-name = "parajax"
+name = "graphpint"
 description = "Scaling differential equations via transferable dynamics"
 version = "0.0.1"
 authors = [
@@ -10,6 +10,8 @@ dependencies = [
     "equinox >= 0.9.2",
     "optax >= 0.1.1",
     "flax",
+    "jraph",
+    "pyvis==0.3.1",
     "pytest",
 ]
 
@@ -20,4 +22,4 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["parajax"]
+py-modules = ["graphpint"]
